@@ -1,0 +1,346 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>HTML中国象棋</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: "SimHei", sans-serif;
+        }
+        body {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            background: #f5e9d3;
+            padding: 20px;
+        }
+        h1 {
+            color: #8b2323;
+            margin-bottom: 10px;
+        }
+        .tip {
+            margin-bottom: 12px;
+            font-size: 18px;
+            color: #333;
+        }
+        #resetBtn {
+            padding: 8px 24px;
+            font-size: 16px;
+            background: #c0392b;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            margin-bottom: 15px;
+        }
+        #resetBtn:hover {
+            background: #a02a1c;
+        }
+        /* 棋盘容器 */
+        .chess-box {
+            background: #cd853f;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 4px 12px #666;
+        }
+        table#chessBoard {
+            border-collapse: collapse;
+        }
+        td {
+            width: 60px;
+            height: 60px;
+            text-align: center;
+            position: relative;
+        }
+        /* 棋盘横线竖线 */
+        .grid-line {
+            border: 1px solid #603813;
+        }
+        /* 楚河汉界 */
+        .river-row td {
+            border: none;
+            font-size: 26px;
+            color: #603813;
+            font-weight: bold;
+        }
+        /* 棋子样式 */
+        .chess {
+            width: 52px;
+            height: 52px;
+            border-radius: 50%;
+            line-height: 52px;
+            font-size: 24px;
+            font-weight: bold;
+            cursor: grab;
+            user-select: none;
+            display: inline-block;
+            box-shadow: 1px 1px 3px #333;
+        }
+        .red {
+            background: #fff0f0;
+            color: #c00;
+            border: 2px solid #c00;
+        }
+        .black {
+            background: #f0f0f0;
+            color: #000;
+            border: 2px solid #000;
+        }
+        .selected {
+            box-shadow: 0 0 0 4px #0099ff !important;
+        }
+    </style>
+</head>
+<body>
+    <h1>中国象棋</h1>
+    <div class="tip">当前回合：<span id="turnText">红方</span></div>
+    <button id="resetBtn">重新开局</button>
+    <div class="chess-box">
+        <table id="chessBoard"></table>
+    </div>
+
+<script>
+// 棋子定义：红方大写，黑方小写
+const CHESS_INIT = [
+    ['r','n','b','a','k','a','b','n','r'],
+    ['','','','','','','','',''],
+    ['','c','','','','','','c',''],
+    ['p','','p','','p','','p','','p'],
+    ['','','','','','','','',''],
+    ['','','','','','','','',''],
+    ['P','','P','','P','','P','','P'],
+    ['','C','','','','','','C',''],
+    ['','','','','','','','',''],
+    ['R','N','B','A','K','A','B','N','R']
+];
+// 棋子文字映射
+const CHESS_TEXT = {
+    'k':'将','r':'车','n':'马','b':'象','a':'士','c':'炮','p':'卒',
+    'K':'帅','R':'車','N':'馬','B':'相','A':'仕','C':'砲','P':'兵'
+};
+let board = JSON.parse(JSON.stringify(CHESS_INIT));
+let selectPos = null; // [row,col] 选中棋子坐标
+let isRedTurn = true; // true红方回合
+const boardDom = document.getElementById('chessBoard');
+const turnText = document.getElementById('turnText');
+const resetBtn = document.getElementById('resetBtn');
+
+// 渲染棋盘
+function renderBoard() {
+    boardDom.innerHTML = '';
+    for(let r=0;r<10;r++){
+        const tr = document.createElement('tr');
+        // 楚河汉界行
+        if(r === 4 || r ===5){
+            tr.className = 'river-row';
+            const td = document.createElement('td');
+            td.colSpan = 9;
+            td.innerText = r===4 ? '楚        河' : '汉        界';
+            tr.appendChild(td);
+            boardDom.appendChild(tr);
+            continue;
+        }
+        for(let c=0;c<9;c++){
+            const td = document.createElement('td');
+            td.className = 'grid-line';
+            td.dataset.r = r;
+            td.dataset.c = c;
+            const piece = board[r][c];
+            if(piece){
+                const div = document.createElement('div');
+                div.className = 'chess ' + (piece === piece.toUpperCase() ? 'red' : 'black');
+                div.innerText = CHESS_TEXT[piece];
+                div.dataset.type = piece;
+                // 选中高亮
+                if(selectPos && selectPos[0] === r && selectPos[1] === c){
+                    div.classList.add('selected');
+                }
+                td.appendChild(div);
+            }
+            // 格子点击事件
+            td.onclick = () => cellClick(r,c);
+            tr.appendChild(td);
+        }
+        boardDom.appendChild(tr);
+    }
+    turnText.innerText = isRedTurn ? '红方' : '黑方';
+}
+
+// 格子点击逻辑
+function cellClick(r,c){
+    const piece = board[r][c];
+    // 已有选中棋子
+    if(selectPos){
+        const [sr,sc] = selectPos;
+        const selPiece = board[sr][sc];
+        // 点击自己棋子：重新选中
+        if(piece && isSameSide(selPiece, piece)){
+            selectPos = [r,c];
+            renderBoard();
+            return;
+        }
+        // 判断能否走棋
+        if(canMove(sr,sc,r,c)){
+            // 吃掉对方棋子
+            board[r][c] = selPiece;
+            board[sr][sc] = '';
+            // 判断胜负
+            if(piece === 'k' || piece === 'K'){
+                alert(isRedTurn ? '红方胜利！黑将被吃' : '黑方胜利！红帅被吃');
+                resetGame();
+                return;
+            }
+            // 切换回合
+            isRedTurn = !isRedTurn;
+        }
+        selectPos = null;
+    }else{
+        // 无选中，点击己方棋子才选中
+        if(piece && isMySide(piece)){
+            selectPos = [r,c];
+        }
+    }
+    renderBoard();
+}
+
+// 判断是否己方棋子
+function isMySide(piece){
+    if(isRedTurn) return piece === piece.toUpperCase();
+    return piece === piece.toLowerCase();
+}
+// 判断同方
+function isSameSide(p1,p2){
+    return (p1 === p1.toUpperCase()) === (p2 === p2.toUpperCase());
+}
+
+// 走棋规则核心
+function canMove(sr,sc,tr,tc){
+    const s = board[sr][sc];
+    const t = board[tr][tc];
+    // 目标是己方棋子，不能走
+    if(t && isSameSide(s,t)) return false;
+    const dr = tr - sr;
+    const dc = tc - sc;
+    const absDr = Math.abs(dr);
+    const absDc = Math.abs(dc);
+    // 帅/将 K k
+    if(s === 'K' || s === 'k'){
+        // 九宫范围
+        const limitR = s==='K' ? [7,8,9] : [0,1,2];
+        if(!limitR.includes(tr) || tc <3 || tc>5) return false;
+        // 一步一格
+        if((absDr + absDc) !==1) return false;
+        // 将帅对面无棋子
+        if(absDr ===9 && dc===0){
+            for(let i=sr+1;i<tr;i++){
+                if(board[i][sc]) return false;
+            }
+        }
+        return true;
+    }
+    // 士 A a
+    if(s === 'A' || s === 'a'){
+        const limitR = s==='A' ? [7,8,9] : [0,1,2];
+        if(!limitR.includes(tr) || tc <3 || tc>5) return false;
+        return absDr ===1 && absDc ===1;
+    }
+    // 象/相 B b
+    if(s === 'B' || s === 'b'){
+        // 过河禁止
+        if((s==='B' && tr<5) || (s==='b' && tr>4)) return false;
+        if(absDr !==2 || absDc !==2) return false;
+        // 塞象眼
+        const eyeR = sr + dr/2;
+        const eyeC = sc + dc/2;
+        return !board[eyeR][eyeC];
+    }
+    // 马 N n
+    if(s === 'N' || s === 'n'){
+        const valid = (absDr===2 && absDc===1) || (absDr===1 && absDc===2);
+        if(!valid) return false;
+        // 马腿
+        let blockR, blockC;
+        if(absDr ===2){
+            blockR = sr + dr/2;
+            blockC = sc;
+        }else{
+            blockR = sr;
+            blockC = sc + dc/2;
+        }
+        return !board[blockR][blockC];
+    }
+    // 车 R r
+    if(s === 'R' || s === 'r'){
+        // 只能横或竖
+        if(dr!==0 && dc!==0) return false;
+        // 中间挡子
+        if(dr ===0){
+            const step = dc>0 ? 1 : -1;
+            for(let c=sc+step;c!==tc;c+=step){
+                if(board[sr][c]) return false;
+            }
+        }else{
+            const step = dr>0 ? 1 : -1;
+            for(let r=sr+step;r!==tr;r+=step){
+                if(board[r][sc]) return false;
+            }
+        }
+        return true;
+    }
+    // 炮 C c
+    if(s === 'C' || s === 'c'){
+        if(dr!==0 && dc!==0) return false;
+        let count = 0;
+        if(dr ===0){
+            const step = dc>0 ?1:-1;
+            for(let c=sc+step;c!==tc;c+=step){
+                if(board[sr][c]) count++;
+            }
+        }else{
+            const step = dr>0 ?1:-1;
+            for(let r=sr+step;r!==tr;r+=step){
+                if(board[r][sc]) count++;
+            }
+        }
+        // 无子遮挡：只能走不能吃；有一个遮挡：只能吃子
+        return (t ? count===1 : count===0);
+    }
+    // 兵/卒 P p
+    if(s === 'P' || s === 'p'){
+        // 未过河只能前进
+        if(s === 'P'){
+            if(sr>4){
+                if(dr === -1 && dc ===0) return true;
+                return false;
+            }else{
+                return (dr===-1 && dc===0) || absDc===1 && dr===0;
+            }
+        }else{
+            if(sr<5){
+                if(dr === 1 && dc ===0) return true;
+                return false;
+            }else{
+                return (dr===1 && dc===0) || absDc===1 && dr===0;
+            }
+        }
+    }
+    return false;
+}
+
+// 重置游戏
+function resetGame(){
+    board = JSON.parse(JSON.stringify(CHESS_INIT));
+    selectPos = null;
+    isRedTurn = true;
+    renderBoard();
+}
+resetBtn.onclick = resetGame;
+
+// 初始化渲染
+renderBoard();
+</script>
+</body>
+</html>
