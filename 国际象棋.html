@@ -1,0 +1,252 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>国际象棋 v1.0.0 | HTML Chess</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: "Microsoft YaHei", sans-serif;
+        }
+        body {
+            background-color: #1a1a1a;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 30px 10px;
+            color: #fff;
+        }
+        .header {
+            text-align: center;
+            margin-bottom: 20px;
+        }
+        .title {
+            font-size: 28px;
+            margin-bottom: 8px;
+        }
+        .version {
+            color: #bbbbbb;
+            font-size: 16px;
+        }
+        .tip {
+            font-size: 18px;
+            margin-bottom: 15px;
+            height: 26px;
+        }
+        #chessBoard {
+            display: grid;
+            grid-template-columns: repeat(8, 70px);
+            border: 5px solid #704010;
+        }
+        .cell {
+            width: 70px;
+            height: 70px;
+            font-size: 46px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            user-select: none;
+        }
+        .light {
+            background-color: #f2e0bc;
+        }
+        .dark {
+            background-color: #a67c52;
+        }
+        /* 选中棋子边框 */
+        .selected {
+            box-shadow: inset 0 0 0 4px #00ccff;
+        }
+        /* 可落子格子底色 */
+        .can-move {
+            background-color: rgba(0, 170, 255, 0.35) !important;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <div class="title">HTML 国际象棋小游戏</div>
+        <div class="version">Version v1.0.0 | HTML Chess Game</div>
+    </div>
+    <div class="tip" id="gameTip">白方先行</div>
+    <div id="chessBoard"></div>
+
+    <script>
+        // 版本标识
+        const VERSION = "v1.0.0";
+        // 棋子字符
+        const CHESS_PIECE = {
+            wK: "♔", wQ: "♕", wR: "♖", wB: "♗", wN: "♘", wP: "♙",
+            bK: "♚", bQ: "♛", bR: "♜", bB: "♝", bN: "♞", bP: "♟"
+        };
+        // 初始棋盘布局
+        const initLayout = [
+            ["bR", "bN", "bB", "bQ", "bK", "bB", "bN", "bR"],
+            ["bP", "bP", "bP", "bP", "bP", "bP", "bP", "bP"],
+            ["", "", "", "", "", "", "", ""],
+            ["", "", "", "", "", "", "", ""],
+            ["", "", "", "", "", "", "", ""],
+            ["", "", "", "", "", "", "", ""],
+            ["wP", "wP", "wP", "wP", "wP", "wP", "wP", "wP"],
+            ["wR", "wN", "wB", "wQ", "wK", "wB", "wN", "wR"]
+        ];
+
+        let board = JSON.parse(JSON.stringify(initLayout));
+        let currentTurn = "w"; // w白方，b黑方
+        let selectPos = null; // 选中棋子坐标 {x,y}
+        let moveList = []; // 当前棋子可走坐标列表
+        const boardDom = document.getElementById("chessBoard");
+        const tipDom = document.getElementById("gameTip");
+
+        // 渲染棋盘
+        function renderBoard() {
+            boardDom.innerHTML = "";
+            for (let y = 0; y < 8; y++) {
+                for (let x = 0; x < 8; x++) {
+                    const cell = document.createElement("div");
+                    // 格子底色
+                    cell.className = "cell " + ((x + y) % 2 === 0 ? "light" : "dark");
+                    cell.dataset.x = x;
+                    cell.dataset.y = y;
+                    // 填充棋子
+                    const piece = board[y][x];
+                    if (piece) cell.innerText = CHESS_PIECE[piece];
+                    // 选中高亮
+                    if (selectPos && selectPos.x === x && selectPos.y === y) {
+                        cell.classList.add("selected");
+                    }
+                    // 可走点位高亮
+                    if (moveList.some(item => item.x === x && item.y === y)) {
+                        cell.classList.add("can-move");
+                    }
+                    cell.onclick = () => cellClick(x, y);
+                    boardDom.appendChild(cell);
+                }
+            }
+        }
+
+        // 格子点击事件
+        function cellClick(x, y) {
+            const targetPiece = board[y][x];
+            // 点击已选中棋子，取消选择
+            if (selectPos && selectPos.x === x && selectPos.y === y) {
+                selectPos = null;
+                moveList = [];
+                renderBoard();
+                return;
+            }
+            // 点击可移动点位，执行落子
+            if (moveList.some(p => p.x === x && p.y === y)) {
+                const sx = selectPos.x;
+                const sy = selectPos.y;
+                // 移动棋子
+                board[y][x] = board[sy][sx];
+                board[sy][sx] = "";
+                // 吃掉对方王，游戏结束
+                if (targetPiece && targetPiece[1] === "K") {
+                    tipDom.innerText = currentTurn === "w" ? "白方获胜！游戏结束" : "黑方获胜！游戏结束";
+                    selectPos = null;
+                    moveList = [];
+                    renderBoard();
+                    return;
+                }
+                // 切换回合
+                currentTurn = currentTurn === "w" ? "b" : "w";
+                tipDom.innerText = currentTurn === "w" ? "白方回合" : "黑方回合";
+                selectPos = null;
+                moveList = [];
+                renderBoard();
+                return;
+            }
+            // 点击己方棋子，选中并计算可走路径
+            if (targetPiece && targetPiece[0] === currentTurn) {
+                selectPos = { x, y };
+                moveList = getValidMove(x, y);
+                renderBoard();
+                return;
+            }
+            // 点击空地/敌方棋子，清空选择
+            selectPos = null;
+            moveList = [];
+            renderBoard();
+        }
+
+        // 获取棋子合法移动坐标
+        function getValidMove(x, y) {
+            const moves = [];
+            const piece = board[y][x];
+            const color = piece[0];
+            const type = piece[1];
+            // 各棋子移动方向
+            const dirMap = {
+                P: color === "w" ? [[0, -1], [0, -2]] : [[0, 1], [0, 2]],
+                R: [[1, 0], [-1, 0], [0, 1], [0, -1]],
+                B: [[1, 1], [1, -1], [-1, 1], [-1, -1]],
+                Q: [[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [1, -1], [-1, 1], [-1, -1]],
+                K: [[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [1, -1], [-1, 1], [-1, -1]],
+                N: [[2, 1], [2, -1], [-2, 1], [-2, -1], [1, 2], [1, -2], [-1, 2], [-1, -2]]
+            }[type];
+
+            // 校验坐标是否有效，长线棋子阻断判断
+            function checkPos(nx, ny, isLongRange) {
+                if (nx < 0 || nx >= 8 || ny < 0 || ny >= 8) return false;
+                const tar = board[ny][nx];
+                if (tar && tar[0] === color) return false;
+                moves.push({ x: nx, y: ny });
+                return !tar;
+            }
+
+            // 兵单独处理
+            if (type === "P") {
+                // 前进
+                for (let [dx, dy] of dirMap) {
+                    const nx = x + dx;
+                    const ny = y + dy;
+                    if (nx < 0 || nx >= 8 || ny < 0 || ny >= 8) continue;
+                    // 两步前进仅初始行可用
+                    if (Math.abs(dy) === 2) {
+                        const midY = y + dy / 2;
+                        if (board[midY][x] || board[ny][nx]) continue;
+                    } else if (board[ny][nx]) continue;
+                    moves.push({ x: nx, y: ny });
+                }
+                // 斜向吃子
+                const eatDir = color === "w" ? [[-1, -1], [1, -1]] : [[-1, 1], [1, 1]];
+                for (let [dx, dy] of eatDir) {
+                    const nx = x + dx;
+                    const ny = y + dy;
+                    if (nx >= 0 && nx < 8 && ny >= 0 && ny < 8) {
+                        const tar = board[ny][nx];
+                        if (tar && tar[0] !== color) moves.push({ x: nx, y: ny });
+                    }
+                }
+            }
+            // 马、王（单次移动）
+            else if (type === "N" || type === "K") {
+                for (let [dx, dy] of dirMap) {
+                    checkPos(x + dx, y + dy, false);
+                }
+            }
+            // 车、象、后（无限长线移动）
+            else {
+                for (let [dx, dy] of dirMap) {
+                    let cx = x, cy = y;
+                    while (true) {
+                        cx += dx;
+                        cy += dy;
+                        if (!checkPos(cx, cy, true)) break;
+                    }
+                }
+            }
+            return moves;
+        }
+
+        // 初始化渲染棋盘
+        renderBoard();
+    </script>
+</body>
+</html>
