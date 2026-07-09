@@ -1,0 +1,256 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>小游戏合集 v1.0.0</title>
+    <style>
+        * {margin:0;padding:0;box-sizing:border-box;font-family:Microsoft Yahei}
+        body {background:#1a1a2e;color:#fff;text-align:center;padding:20px}
+        .menu {margin:30px 0}
+        .game-btn {padding:15px 30px;margin:10px;background:#16213e;border:none;color:#fff;border-radius:8px;font-size:18px;cursor:pointer}
+        .game-btn:hover {background:#0f3460}
+        .game-box {display:none;margin:20px auto}
+        canvas {border:2px solid #eee;background:#deb887}
+        #snakeCanvas {background:#000}
+        #board2048 {width:320px;height:320px;background:#bbada0;padding:10px;border-radius:6px;margin:0 auto;display:grid;grid-template-columns:repeat(4,1fr);gap:10px}
+        .cell {width:70px;height:70px;background:#cdc1b4;border-radius:4px;display:grid;place-items:center;font-size:26px;font-weight:bold;color:#776e65}
+        #tttBoard {display:grid;grid-template-columns:repeat(3,80px);gap:6px;width:250px;margin:20px auto}
+        .ttt-cell {width:80px;height:80px;background:#222;border-radius:4px;font-size:40px;display:grid;place-items:center;cursor:pointer}
+        .reset {margin-top:15px;padding:10px 25px;background:#e94560;border:none;color:#fff;border-radius:6px;font-size:16px;cursor:pointer}
+    </style>
+</head>
+<body>
+    <h1>休闲小游戏合集 v1.0.0</h1>
+    <div class="menu">
+        <button class="game-btn" onclick="showGame('five')">五子棋</button>
+        <button class="game-btn" onclick="showGame('snake')">贪吃蛇</button>
+        <button class="game-btn" onclick="showGame('ttt')">井字棋</button>
+        <button class="game-btn" onclick="showGame('game2048')">2048</button>
+    </div>
+
+    <!-- 五子棋 -->
+    <div id="five" class="game-box">
+        <h3>五子棋（黑先下）</h3>
+        <canvas id="fiveCanvas" width="480" height="480"></canvas>
+        <br><button class="reset" onclick="resetFive()">重新开局</button>
+    </div>
+
+    <!-- 贪吃蛇 -->
+    <div id="snake" class="game-box">
+        <h3>贪吃蛇 方向键控制</h3>
+        <canvas id="snakeCanvas" width="400" height="400"></canvas>
+        <br><button class="reset" onclick="initSnake()">重新开始</button>
+    </div>
+
+    <!-- 井字棋 -->
+    <div id="ttt" class="game-box">
+        <h3>井字棋 X vs O</h3>
+        <div id="tttBoard"></div>
+        <p id="tttTip"></p>
+        <button class="reset" onclick="resetTtt()">重置</button>
+    </div>
+
+    <!-- 2048 -->
+    <div id="game2048" class="game-box">
+        <h3>2048 上下左右键滑动</h3>
+        <div id="board2048"></div>
+        <p id="tip2048"></p>
+        <button class="reset" onclick="init2048()">重新开局</button>
+    </div>
+
+<script>
+// 切换游戏界面
+function showGame(id) {
+    document.querySelectorAll('.game-box').forEach(el=>el.style.display='none')
+    document.getElementById(id).style.display='block'
+}
+
+// ========== 1.五子棋 ==========
+const fiveCanvas = document.getElementById('fiveCanvas')
+const fctx = fiveCanvas.getContext('2d')
+let fiveArr = Array(15).fill().map(()=>Array(15).fill(0))
+let blackTurn = true; const size = 30
+function drawBoard(){
+    fctx.clearRect(0,0,480,480)
+    for(let i=0;i<15;i++){
+        fctx.moveTo(size/2+i*size,size/2);fctx.lineTo(size/2+i*size,480-size/2)
+        fctx.moveTo(size/2,size/2+i*size);fctx.lineTo(480-size/2,size/2+i*size)
+    }
+    fctx.strokeStyle='#333';fctx.stroke()
+    for(let y=0;y<15;y++){
+        for(let x=0;x<15;x++){
+            let val = fiveArr[y][x]
+            if(!val)continue
+            fctx.beginPath()
+            fctx.arc(size/2+x*size,size/2+y*size,12,0,Math.PI*2)
+            fctx.fillStyle = val===1?'#000':'#fff'
+            fctx.fill();fctx.stroke()
+        }
+    }
+}
+function resetFive(){fiveArr=Array(15).fill().map(()=>Array(15).fill(0));blackTurn=true;drawBoard()}
+fiveCanvas.onclick = e=>{
+    let rect = fiveCanvas.getBoundingClientRect()
+    let x = Math.round((e.clientX-rect.left-size/2)/size)
+    let y = Math.round((e.clientY-rect.top-size/2)/size)
+    if(x<0||x>=15||y<0||y>=15||fiveArr[y][x])return
+    fiveArr[y][x] = blackTurn?1:2
+    blackTurn = !blackTurn
+    drawBoard();checkWin(x,y)
+}
+function checkWin(x,y){
+    let self = fiveArr[y][x]
+    const dirs = [[1,0],[0,1],[1,1],[1,-1]]
+    for(let [dx,dy] of dirs){
+        let cnt=1
+        for(let i=1;i<5;i++){let nx=x+dx*i,ny=y+dy*i;if(nx>=0&&nx<15&&ny>=0&&ny<15&&fiveArr[ny][nx]===self)cnt++;else break}
+        for(let i=1;i<5;i++){let nx=x-dx*i,ny=y-dy*i;if(nx>=0&&nx<15&&ny>=0&&ny<15&&fiveArr[ny][nx]===self)cnt++;else break}
+        if(cnt>=5)alert(self===1?'黑棋获胜':'白棋获胜'),resetFive()
+    }
+}
+resetFive()
+
+// ========== 2.贪吃蛇 ==========
+const snakeCanvas = document.getElementById('snakeCanvas')
+const sctx = snakeCanvas.getContext('2d')
+let snake,food,dir,nextDir,gameLoop,sizeS=20
+function initSnake(){
+    clearInterval(gameLoop)
+    snake = [{x:10,y:10}];dir={x:1,y:0};nextDir={x:1,y:0}
+    createFood();gameLoop=setInterval(runSnake,100)
+}
+function createFood(){
+    food={x:Math.floor(Math.random()*20),y:Math.floor(Math.random()*20)}
+}
+function runSnake(){
+    dir={...nextDir}
+    let head = {x:snake[0].x+dir.x,y:snake[0].y+dir.y}
+    if(head.x<0||head.x>=20||head.y<0||head.y>=20||snake.some(p=>p.x===head.x&&p.y===head.y)){
+        clearInterval(gameLoop);alert('游戏结束')
+        return
+    }
+    snake.unshift(head)
+    if(head.x===food.x&&head.y===food.y)createFood()
+    else snake.pop()
+    drawSnake()
+}
+function drawSnake(){
+    sctx.fillStyle='#000';sctx.fillRect(0,0,400,400)
+    sctx.fillStyle='#0f0';snake.forEach(p=>sctx.fillRect(p.x*sizeS,p.y*sizeS,sizeS-2,sizeS-2))
+    sctx.fillStyle='#f00';sctx.fillRect(food.x*sizeS,food.y*sizeS,sizeS-2,sizeS-2)
+}
+document.onkeydown = e=>{
+    if(!snake)return
+    switch(e.key){
+        case 'ArrowUp':if(dir.y!==1)nextDir={x:0,y:-1};break
+        case 'ArrowDown':if(dir.y!==-1)nextDir={x:0,y:1};break
+        case 'ArrowLeft':if(dir.x!==1)nextDir={x:-1,y:0};break
+        case 'ArrowRight':if(dir.x!==-1)nextDir={x:1,y:0};break
+    }
+}
+initSnake()
+
+// ==========3.井字棋 ==========
+let tttBoard = document.getElementById('tttBoard')
+let tttArr = [0,0,0,0,0,0,0,0,0]
+let tttTurn = 1, tttTip = document.getElementById('tttTip')
+function resetTtt(){
+    tttArr = [0,0,0,0,0,0,0,0,0];tttTurn=1;renderTtt()
+}
+function renderTtt(){
+    tttBoard.innerHTML=''
+    tttTip.textContent=''
+    tttArr.forEach((v,i)=>{
+        let div = document.createElement('div')
+        div.className='ttt-cell'
+        div.textContent = v===1?'X':v===2?'O':''
+        div.onclick=()=>clickTtt(i)
+        tttBoard.appendChild(div)
+    })
+}
+function clickTtt(i){
+    if(tttArr[i])return
+    tttArr[i]=tttTurn
+    tttTurn = tttTurn===1?2:1
+    renderTtt();judgeTtt()
+}
+function judgeTtt(){
+    const win = [[0,1,2],[3,4,5],[6,7,8],[0,3,6],[1,4,7],[2,5,8],[0,4,8],[2,4,6]]
+    for(let line of win){
+        let [a,b,c] = line
+        if(tttArr[a]&&tttArr[a]===tttArr[b]&&tttArr[b]===tttArr[c]){
+            tttTip.textContent = tttArr[a]===1?'X赢了':'O赢了';return
+        }
+    }
+    if(tttArr.every(x=>x!==0))tttTip.textContent='平局'
+}
+resetTtt()
+
+// ==========4.2048小游戏 ==========
+let board2048 = document.getElementById('board2048')
+let grid = [];let tip2048 = document.getElementById('tip2048')
+function init2048(){
+    grid = Array(4).fill().map(()=>Array(4).fill(0))
+    randomNum();randomNum();render2048()
+}
+function randomNum(){
+    let empty = []
+    for(let y=0;y<4;y++)for(let x=0;x<4;x++)if(grid[y][x]===0)empty.push([x,y])
+    if(!empty.length)return
+    let [x,y] = empty[Math.floor(Math.random()*empty.length)]
+    grid[y][x] = Math.random()>0.9?4:2
+}
+function render2048(){
+    board2048.innerHTML=''
+    for(let y=0;y<4;y++){
+        for(let x=0;x<4;x++){
+            let cell = document.createElement('div')
+            cell.className='cell'
+            cell.textContent = grid[y][x]||''
+            board2048.appendChild(cell)
+        }
+    }
+}
+function slideLeft(row){
+    let arr = row.filter(v=>v!==0)
+    for(let i=0;i<arr.length-1;i++)if(arr[i]===arr[i+1]){arr[i]*=2;arr[i+1]=0}
+    arr = arr.filter(v=>v!==0)
+    while(arr.length<4)arr.push(0)
+    return arr
+}
+function move(d){
+    let old = JSON.parse(JSON.stringify(grid))
+    if(d==='left')grid = grid.map(r=>slideLeft(r))
+    if(d==='right')grid = grid.map(r=>slideLeft(r.reverse()).reverse())
+    if(d==='up'){
+        for(let x=0;x<4;x++){
+            let col = [];for(let y=0;y<4;y++)col.push(grid[y][x])
+            col = slideLeft(col)
+            for(let y=0;y<4;y++)grid[y][x]=col[y]
+        }
+    }
+    if(d==='down'){
+        for(let x=0;x<4;x++){
+            let col = [];for(let y=0;y<4;y++)col.push(grid[y][x])
+            col = slideLeft(col.reverse()).reverse()
+            for(let y=0;y<4;y++)grid[y][x]=col[y]
+        }
+    }
+    if(JSON.stringify(old)!==JSON.stringify(grid)){randomNum();render2048();checkWin2048()}
+}
+function checkWin2048(){
+    for(let y=0;y<4;y++)for(let x=0;x<4;x++)if(grid[y][x]===2048){tip2048.textContent='恭喜合成2048！'}
+}
+document.addEventListener('keydown',e=>{
+    if(document.getElementById('game2048').style.display!=='block')return
+    if(['ArrowLeft','ArrowRight','ArrowUp','ArrowDown'].includes(e.key))e.preventDefault()
+    if(e.key==='ArrowLeft')move('left')
+    if(e.key==='ArrowRight')move('right')
+    if(e.key==='ArrowUp')move('up')
+    if(e.key==='ArrowDown')move('down')
+})
+init2048()
+</script>
+</body>
+</html>
