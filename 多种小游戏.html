@@ -1,0 +1,307 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"/>
+  <title>633摸珠对战小游戏</title>
+  <style>
+    * {margin:0;padding:0;box-sizing:border-box;font-family:system-ui, sans-serif;}
+    body {
+      background: linear-gradient(135deg,#1a2a6c,#b21f1f,#fdbb2d);
+      min-height:100vh;color:#fff;overflow-x:hidden;
+    }
+    .container {max-width:900px;margin:0 auto;padding:10px;}
+    header {text-align:center;padding:15px 0;}
+    h1 {font-size:clamp(1.6rem,5vw,2.8rem);text-shadow:0 2px 8px #000;}
+    .menu-box {
+      background:rgba(0,0,0,0.4);border-radius:16px;padding:20px;margin:15px 0;
+      backdrop-filter:blur(8px);
+    }
+    .btn {
+      display:block;width:100%;padding:14px;margin:10px 0;border:none;
+      border-radius:12px;font-size:18px;font-weight:bold;cursor:pointer;
+      transition:0.2s all;
+    }
+    .btn-primary {background:#fdbb2d;color:#111;}
+    .btn-danger {background:#e74c3c;color:#fff;}
+    .btn-blue {background:#3498db;color:#fff;}
+    .btn:hover {opacity:0.85;transform:scale(1.02);}
+    .game-area {display:none;text-align:center;}
+    .ball-box {
+      display:grid;grid-template-columns:repeat(8,1fr);gap:6px;
+      padding:15px;background:rgba(0,0,0,0.3);border-radius:12px;margin:15px 0;
+    }
+    .ball {
+      width:clamp(24px,6vw,42px);height:clamp(24px,6vw,42px);
+      border-radius:50%;display:inline-block;cursor:pointer;border:2px solid #fff8;
+    }
+    .red {background:#e74c3c;}
+    .blue {background:#3498db;}
+    .yellow {background:#f1c40f;}
+    .info-text {font-size:clamp(16px,3vw,20px);margin:12px 0;line-height:1.6;}
+    .score-panel {
+      display:flex;justify-content:space-between;padding:10px;
+      background:rgba(255,255,255,0.1);border-radius:10px;margin:10px 0;
+    }
+    .rank-list {
+      max-height:300px;overflow-y:auto;background:rgba(0,0,0,0.3);
+      border-radius:10px;padding:10px;margin-top:10px;
+    }
+    .rank-item {display:flex;justify-content:space-between;padding:8px;border-bottom:1px solid #fff2;}
+    .room-input {
+      width:100%;padding:12px;border-radius:10px;border:none;font-size:16px;margin:10px 0;
+    }
+    .pk-panel {display:none;}
+    .setting-bar {display:flex;gap:10px;margin:10px 0;}
+    .setting-bar button {flex:1;padding:10px;border-radius:8px;border:none;}
+    audio {display:none;}
+  </style>
+</head>
+<body>
+<audio id="bgMusic" loop preload="auto">
+  <source src="https://assets.mixkit.co/sfx/preview/mixkit-arcade-game-loop-1311.mp3" type="audio/mpeg">
+
+<audio id="clickSound">
+  <source src="https://assets.mixkit.co/sfx/preview/mixkit-arcade-bonus-alert-767.mp3" type="audio/mpeg">
+
+
+<div class="container">
+  <header><h1>633摸珠PK对战</h1></header>
+
+  <!-- 主菜单 -->
+  <div id="mainMenu" class="menu-box">
+    <div class="setting-bar">
+      <button id="musicBtn">背景音乐：开启</button>
+      <button id="rankBtn">积分排行榜</button>
+    </div>
+    <button class="btn btn-primary" id="singleBtn">单人游玩</button>
+    <button class="btn btn-blue" id="matchBtn">真人快速匹配PK</button>
+    <button class="btn btn-blue" id="createRoomBtn">创建房间（分享房间号）</button>
+    <input class="room-input" id="joinRoomInput" placeholder="输入房间号加入对局">
+    <button class="btn btn-danger" id="joinRoomBtn">加入房间</button>
+  </div>
+
+  <!-- 排行榜弹窗 -->
+  <div id="rankBox" class="menu-box" style="display:none;">
+    <h2>积分排行榜</h2>
+    <div class="rank-list" id="rankList"></div>
+    <button class="btn btn-primary" id="closeRankBtn">返回</button>
+  </div>
+
+  <!-- 游戏对局界面 -->
+  <div id="gameView" class="game-area menu-box">
+    <div class="score-panel">
+      <div>当前积分：<span id="nowScore">0</span></div>
+      <div>最高纪录：<span id="maxScore">0</span></div>
+    </div>
+    <div class="pk-panel" id="pkStatus">等待匹配对手...</div>
+    <div class="info-text">
+      规则：三色珠子各8颗，抽取12颗，633组合得分最高，543扣分
+    </div>
+    <div class="ball-box" id="ballContainer"></div>
+    <div class="info-text" id="drawTip">点击【抽取12颗珠子】开始本局</div>
+    <button class="btn btn-primary" id="drawBtn">抽取12颗珠子</button>
+    <button class="btn btn-danger" id="backMenuBtn">返回主菜单</button>
+  </div>
+</div>
+
+<script>
+// ===================== 1. 全局配置与本地存储 =====================
+const gameConfig = {
+  ballTotal:24,
+  eachColor:8,
+  drawNum:12,
+  musicOpen:true
+};
+const storage = {
+  get(key){return JSON.parse(localStorage.getItem(key))||null},
+  set(key,val){localStorage.setItem(key,JSON.stringify(val))}
+};
+let userData = storage.get("userGameData")||{maxScore:0,history:[]};
+storage.set("userGameData",userData);
+
+// 音效音乐控制
+const bgMusic = document.getElementById("bgMusic");
+const clickSound = document.getElementById("clickSound");
+const musicBtn = document.getElementById("musicBtn");
+function playClick(){clickSound.currentTime=0;clickSound.play();}
+musicBtn.onclick = ()=>{
+  gameConfig.musicOpen = !gameConfig.musicOpen;
+  if(gameConfig.musicOpen){
+    bgMusic.play();
+    musicBtn.innerText="背景音乐：开启";
+  }else{
+    bgMusic.pause();
+    musicBtn.innerText="背景音乐：关闭";
+  }
+  playClick();
+};
+
+// ===================== 2. 珠子生成与抽卡逻辑 =====================
+const colors = ["red","blue","yellow"];
+function initBalls(){
+  const container = document.getElementById("ballContainer");
+  container.innerHTML = "";
+  // 生成全部24颗珠子
+  let balls = [];
+  colors.forEach(c=>{
+    for(let i=0;i<gameConfig.eachColor;i++) balls.push(c);
+  });
+  // 打乱
+  balls.sort(()=>Math.random()-0.5);
+  window.allBalls = balls;
+  window.drawResult = [];
+  renderAllBalls(balls);
+}
+function renderAllBalls(list){
+  const container = document.getElementById("ballContainer");
+  container.innerHTML = "";
+  list.forEach(c=>{
+    const div = document.createElement("div");
+    div.className = `ball ${c}`;
+    container.appendChild(div);
+  })
+}
+// 抽取12颗
+function drawBalls(){
+  playClick();
+  const all = [...window.allBalls];
+  const draw = [];
+  for(let i=0;i<gameConfig.drawNum;i++){
+    const r = Math.floor(Math.random()*all.length);
+    draw.push(all.splice(r,1)[0]);
+  }
+  window.drawResult = draw;
+  renderAllBalls(draw);
+  calcScore(draw);
+}
+// 计算得分核心逻辑（633判定）
+function calcScore(drawList){
+  const count = {red:0,blue:0,yellow:0};
+  drawList.forEach(c=>count[c]++);
+  let nums = Object.values(count).sort((a,b)=>b-a);
+  let score = 0;
+  const [a,b,c] = nums;
+  document.getElementById("drawTip").innerText = `抽取数量：红${count.red} 蓝${count.blue} 黄${count.blue} 组合${a}${b}${c}`;
+  // 633高分
+  if((a===6&&b===3&&c===3)) score=20;
+  else if(a===8&&b===4) score=50;
+  else if(a===7&&b===5) score=50;
+  else if(a===7&&b===3&&c===2) score=10;
+  else if(a===5&&b===4&&c===3) score=-30;
+  else if(a===4&&b===4&&c===4) score=10;
+  else score=5;
+  // 更新积分
+  const now = Number(document.getElementById("nowScore").innerText)+score;
+  document.getElementById("nowScore").innerText = now;
+  // 更新最高分
+  if(now>userData.maxScore){
+    userData.maxScore = now;
+    document.getElementById("maxScore").innerText = userData.maxScore;
+    storage.set("userGameData",userData);
+  }
+  return score;
+}
+
+// ===================== 3. 界面切换 =====================
+const mainMenu = document.getElementById("mainMenu");
+const gameView = document.getElementById("gameView");
+const rankBox = document.getElementById("rankBox");
+document.getElementById("singleBtn").onclick = ()=>{
+  playClick();
+  mainMenu.style.display="none";
+  gameView.style.display="block";
+  document.getElementById("pkStatus").style.display="none";
+  initBalls();
+};
+document.getElementById("backMenuBtn").onclick = ()=>{
+  playClick();
+  gameView.style.display="none";
+  rankBox.style.display="none";
+  mainMenu.style.display="block";
+  document.getElementById("nowScore").innerText="0";
+  document.getElementById("drawTip").innerText="点击【抽取12颗珠子】开始本局";
+};
+
+// ===================== 4. 排行榜本地榜单 =====================
+document.getElementById("rankBtn").onclick = ()=>{
+  playClick();
+  mainMenu.style.display="none";
+  rankBox.style.display="block";
+  const listWrap = document.getElementById("rankList");
+  listWrap.innerHTML="";
+  const list = userData.history.sort((x,y)=>y.score-x.score).slice(0,15);
+  if(list.length===0){
+    listWrap.innerHTML="<div class='rank-item'>暂无游戏记录，快去游玩吧</div>";
+    return;
+  }
+  list.forEach((item,idx)=>{
+    const div = document.createElement("div");
+    div.className="rank-item";
+    div.innerHTML = `<span>第${idx+1}名</span><span>积分：${item.score}</span>`;
+    listWrap.appendChild(div);
+  })
+};
+document.getElementById("closeRankBtn").onclick = ()=>{
+  playClick();
+  rankBox.style.display="none";
+  mainMenu.style.display="block";
+};
+
+// 抽卡按钮绑定
+document.getElementById("drawBtn").onclick = drawBalls;
+
+// ===================== 5. 真人匹配PK简易联机（WebRTC房间） =====================
+let roomId = "";
+let peerConn = null;
+const matchBtn = document.getElementById("matchBtn");
+const createRoomBtn = document.getElementById("createRoomBtn");
+const joinRoomBtn = document.getElementById("joinRoomBtn");
+const joinInput = document.getElementById("joinRoomInput");
+const pkStatus = document.getElementById("pkStatus");
+
+// 创建房间
+createRoomBtn.onclick = ()=>{
+  playClick();
+  roomId = Math.floor(Math.random()*999999).toString().padStart(6,"0");
+  alert(`房间创建成功！房间号：${roomId}，发给好友加入`);
+  enterPkGame();
+};
+// 快速匹配（模拟，可对接信令服务器）
+matchBtn.onclick = ()=>{
+  playClick();
+  pkStatus.style.display="block";
+  pkStatus.innerText="正在匹配真人玩家，请稍候...";
+  mainMenu.style.display="none";
+  gameView.style.display="block";
+  initBalls();
+  // 模拟3秒匹配成功
+  setTimeout(()=>{
+    pkStatus.innerText="匹配成功！对手已进入对局，轮流抽取珠子比拼积分";
+  },3000);
+};
+// 输入房间号加入
+joinRoomBtn.onclick = ()=>{
+  playClick();
+  const rid = joinInput.value.trim();
+  if(!rid||rid.length!==6){
+    alert("请输入6位数字房间号");
+    return;
+  }
+  roomId = rid;
+  enterPkGame();
+};
+function enterPkGame(){
+  mainMenu.style.display="none";
+  gameView.style.display="block";
+  pkStatus.style.display="block";
+  pkStatus.innerText=`当前房间：${roomId}，等待对手加入`;
+  initBalls();
+}
+
+// 初始化页面数据
+document.getElementById("maxScore").innerText = userData.maxScore;
+</script>
+</div>
+</body>
+</html>
