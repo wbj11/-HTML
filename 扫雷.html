@@ -1,0 +1,351 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>扫雷</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
+body{font-family:"PingFang SC","Microsoft YaHei",system-ui,-apple-system,sans-serif;
+  background:linear-gradient(135deg,#263238,#37474f,#455a64);min-height:100vh;
+  display:flex;align-items:center;justify-content:center;padding:16px;}
+.wrap{width:100%;max-width:640px;}
+.top{display:flex;justify-content:space-between;align-items:center;color:#fff;margin-bottom:10px;}
+.title{font-size:22px;font-weight:700;letter-spacing:2px;}
+.levels{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;}
+.levels button{background:#1b2a3a;color:#cfe8ff;border:1px solid #3a5a7a;border-radius:8px;padding:7px 14px;font-size:14px;cursor:pointer;}
+.levels button.active{background:#4fc3f7;color:#0b1622;border-color:#4fc3f7;font-weight:700;}
+.hud{display:flex;justify-content:space-between;align-items:center;background:#1b2a3a;border-radius:10px;padding:8px 14px;margin-bottom:10px;}
+.hud .info{font-size:20px;font-weight:700;color:#ffd166;min-width:70px;}
+.hud .status{font-size:30px;cursor:pointer;line-height:1;}
+.board{display:grid;gap:var(--gap,4px);grid-template-columns:repeat(var(--cols,9),minmax(0,1fr));user-select:none;touch-action:manipulation;}
+.cell{aspect-ratio:1/1;border-radius:4px;display:flex;align-items:center;justify-content:center;
+  font-weight:700;cursor:pointer;background:#8fa3bf;box-shadow:inset 0 -2px 0 rgba(0,0,0,.2), inset 0 1px 0 rgba(255,255,255,.4);
+  font-size:var(--fs,18px);line-height:1;}
+.cell:active{transform:scale(.95);}
+.cell.revealed{background:#dde6f2;box-shadow:none;cursor:default;color:#37474f;}
+.cell.revealed:active{transform:none;}
+.cell.flag,.cell.flag:active{background:#8fa3bf;color:#d32f2f;transform:none;}
+.cell.mine{background:#dde6f2;color:#111;}
+.cell.mine.exploded{background:#ef5350;}
+.cell.n1{color:#1976d2;}
+.cell.n2{color:#2e7d32;}
+.cell.n3{color:#d32f2f;}
+.cell.n4{color:#5e35b1;}
+.cell.n5{color:#8d6e63;}
+.cell.n6{color:#00838f;}
+.cell.n7{color:#37474f;}
+.cell.n8{color:#9e9e9e;}
+.bar{margin-top:12px;display:flex;justify-content:space-between;align-items:center;gap:10px;}
+.hint{color:#cfe8ff;font-size:13px;line-height:1.7;}
+.btn{background:#4fc3f7;color:#0b1622;border:none;padding:9px 16px;border-radius:8px;font-size:14px;font-weight:700;cursor:pointer;}
+.btn.on{background:#ffd166;}
+.overlay{position:fixed;inset:0;background:rgba(12,20,28,.72);display:flex;align-items:center;justify-content:center;
+  opacity:0;pointer-events:none;transition:opacity .25s;z-index:10;}
+.overlay.show{opacity:1;pointer-events:auto;}
+.overlay .box{background:#fff;border-radius:16px;padding:26px 32px;text-align:center;max-width:320px;width:90%;}
+.overlay h2{font-size:26px;color:#263238;margin-bottom:8px;}
+.overlay p{color:#555;font-size:15px;margin-bottom:16px;}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="top">
+    <div class="title">💣 扫雷</div>
+    <div class="hint" id="hint">右键/插旗模式可标记地雷</div>
+  </div>
+  <div class="levels" id="levels">
+    <button data-level="easy" class="active">初级 9×9</button>
+    <button data-level="medium">中级 16×16</button>
+    <button data-level="hard">高级 16×30</button>
+  </div>
+  <div class="hud">
+    <div class="info" id="minesLeft">10</div>
+    <div class="status" id="status">🙂</div>
+    <div class="info" id="timer">000</div>
+  </div>
+  <div class="board" id="board"></div>
+  <div class="bar">
+    <div class="hint">左键翻开 · 右键插旗<br>触屏可开启「插旗模式」</div>
+    <button class="btn" id="flagBtn">🚩 插旗模式</button>
+  </div>
+</div>
+<div class="overlay" id="overlay">
+  <div class="box">
+    <h2 id="ovTitle"></h2>
+    <p id="ovText"></p>
+    <button class="btn" id="ovBtn">再来一局</button>
+  </div>
+</div>
+<script>
+(function(){
+  'use strict';
+  var LEVELS={
+    easy:{rows:9,cols:9,mines:10},
+    medium:{rows:16,cols:16,mines:40},
+    hard:{rows:16,cols:30,mines:99}
+  };
+  var boardEl=document.getElementById('board');
+  var minesLeftEl=document.getElementById('minesLeft');
+  var timerEl=document.getElementById('timer');
+  var statusEl=document.getElementById('status');
+  var overlay=document.getElementById('overlay');
+  var ovTitle=document.getElementById('ovTitle');
+  var ovText=document.getElementById('ovText');
+  var ovBtn=document.getElementById('ovBtn');
+  var flagBtn=document.getElementById('flagBtn');
+
+  var level='easy', rows, cols, mines;
+  var board=[], seconds, timerId, playing, flagMode=false, exploded=false;
+
+  function initLevel(lv){
+    level=lv;
+    var cfg=LEVELS[lv];
+    rows=cfg.rows; cols=cfg.cols; mines=cfg.mines;
+    boardEl.style.setProperty('--cols',cols);
+    boardEl.style.setProperty('--gap', lv==='hard' ? '2px' : (lv==='medium' ? '3px' : '4px'));
+    boardEl.style.setProperty('--fs', lv==='hard' ? '11px' : (lv==='medium' ? '15px' : '18px'));
+    var btns=document.querySelectorAll('#levels button');
+    for(var i=0;i<btns.length;i++) btns[i].classList.remove('active');
+    document.querySelector('#levels button[data-level="'+lv+'"]').classList.add('active');
+  }
+
+  function newGame(){
+    initLevel(level);
+    board=[];
+    for(var r=0;r<rows;r++){
+      var row=[];
+      for(var c=0;c<cols;c++){
+        row.push({mine:false,revealed:false,flag:false,adj:0,el:null});
+      }
+      board.push(row);
+    }
+    boardEl.innerHTML='';
+    for(var i=0;i<rows;i++){
+      for(var j=0;j<cols;j++){
+        var el=document.createElement('div');
+        el.className='cell';
+        boardEl.appendChild(el);
+        board[i][j].el=el;
+      }
+    }
+    playing=false;
+    exploded=false;
+    seconds=0;
+    if(timerId){ clearInterval(timerId); timerId=null; }
+    timerEl.textContent='000';
+    minesLeftEl.textContent=mines;
+    statusEl.textContent='🙂';
+    overlay.classList.remove('show');
+  }
+
+  function placeMines(sr,sc){
+    var candidates=[];
+    for(var r=0;r<rows;r++){
+      for(var c=0;c<cols;c++){
+        if(Math.abs(r-sr)<=1 && Math.abs(c-sc)<=1) continue;
+        candidates.push([r,c]);
+      }
+    }
+    for(var i=candidates.length-1;i>0;i--){
+      var j=Math.floor(Math.random()*(i+1));
+      var t=candidates[i]; candidates[i]=candidates[j]; candidates[j]=t;
+    }
+    for(var k=0;k<mines;k++){
+      var p=candidates[k];
+      board[p[0]][p[1]].mine=true;
+    }
+    for(var a=0;a<rows;a++){
+      for(var b=0;b<cols;b++){
+        if(board[a][b].mine) continue;
+        var cnt=0;
+        for(var dr=-1;dr<=1;dr++){
+          for(var dc=-1;dc<=1;dc++){
+            var nr=a+dr, nc=b+dc;
+            if(nr>=0&&nr<rows&&nc>=0&&nc<cols&&board[nr][nc].mine) cnt++;
+          }
+        }
+        board[a][b].adj=cnt;
+      }
+    }
+    startTimer();
+  }
+
+  function startTimer(){
+    playing=true;
+    statusEl.textContent='🙂';
+    seconds=0;
+    timerId=setInterval(function(){
+      seconds++;
+      timerEl.textContent=('000'+seconds).slice(-3);
+    },1000);
+  }
+
+  function stopTimer(){
+    if(timerId){ clearInterval(timerId); timerId=null; }
+  }
+
+  function revealCell(r,c){
+    if(r<0||r>=rows||c<0||c>=cols) return;
+    var cell=board[r][c];
+    if(cell.revealed||cell.flag) return;
+    if(cell.mine){
+      cell.revealed=true;
+      cell.el.classList.add('revealed','mine','exploded');
+      cell.el.textContent='💣';
+      exploded=true;
+      gameOver();
+      return;
+    }
+    var stack=[[r,c]];
+    while(stack.length){
+      var p=stack.pop();
+      var cr=p[0], cc=p[1];
+      var ce=board[cr][cc];
+      if(ce.revealed||ce.flag) continue;
+      ce.revealed=true;
+      var el=ce.el;
+      el.classList.add('revealed');
+      if(ce.adj>0){
+        el.textContent=ce.adj;
+        el.classList.add('n'+ce.adj);
+      }
+      if(ce.adj===0){
+        for(var dr=-1;dr<=1;dr++){
+          for(var dc=-1;dc<=1;dc++){
+            var nr=cr+dr, nc=cc+dc;
+            if(nr>=0&&nr<rows&&nc>=0&&nc<cols&&!board[nr][nc].mine&&!board[nr][nc].revealed&&!board[nr][nc].flag){
+              stack.push([nr,nc]);
+            }
+          }
+        }
+      }
+    }
+    checkWin();
+  }
+
+  function toggleFlag(r,c){
+    var cell=board[r][c];
+    if(cell.revealed) return;
+    cell.flag=!cell.flag;
+    if(cell.flag){
+      cell.el.classList.add('flag');
+      cell.el.textContent='🚩';
+    } else {
+      cell.el.classList.remove('flag');
+      cell.el.textContent='';
+    }
+    updateMinesLeft();
+    checkWin();
+  }
+
+  function updateMinesLeft(){
+    var flags=0;
+    for(var r=0;r<rows;r++){
+      for(var c=0;c<cols;c++){
+        if(board[r][c].flag) flags++;
+      }
+    }
+    minesLeftEl.textContent=mines-flags;
+  }
+
+  function checkWin(){
+    var revealed=0;
+    for(var r=0;r<rows;r++){
+      for(var c=0;c<cols;c++){
+        if(board[r][c].revealed) revealed++;
+      }
+    }
+    if(revealed===rows*cols-mines){
+      stopTimer();
+      playing=false;
+      statusEl.textContent='😎';
+      overlay.classList.add('show');
+      ovTitle.textContent='🎉 恭喜通关！';
+      ovText.textContent='用时 '+timerEl.textContent+' 秒';
+      setFlagsOnMines();
+    }
+  }
+
+  function setFlagsOnMines(){
+    for(var r=0;r<rows;r++){
+      for(var c=0;c<cols;c++){
+        if(board[r][c].mine&&!board[r][c].flag){
+          board[r][c].flag=true;
+          board[r][c].el.classList.add('flag');
+          board[r][c].el.textContent='🚩';
+        }
+      }
+    }
+    updateMinesLeft();
+  }
+
+  function gameOver(){
+    stopTimer();
+    playing=false;
+    statusEl.textContent='😵';
+    for(var r=0;r<rows;r++){
+      for(var c=0;c<cols;c++){
+        var cell=board[r][c];
+        if(cell.mine&&!cell.revealed){
+          cell.el.classList.add('revealed','mine');
+          cell.el.textContent='💣';
+        }
+      }
+    }
+    overlay.classList.add('show');
+    ovTitle.textContent='💥 踩到地雷了';
+    ovText.textContent='本局用时 '+timerEl.textContent+' 秒，再来一次吧';
+  }
+
+  function cellIndex(el){
+    var idx=Array.prototype.indexOf.call(boardEl.children, el);
+    return {r:Math.floor(idx/cols), c:idx%cols};
+  }
+
+  boardEl.addEventListener('click', function(e){
+    if(overlay.classList.contains('show')) return;
+    var el=e.target;
+    if(!el.classList.contains('cell')) return;
+    var p=cellIndex(el);
+    if(flagMode){ toggleFlag(p.r,p.c); return; }
+    if(!playing){
+      placeMines(p.r,p.c);
+    }
+    if(board[p.r][p.c].flag) return;
+    revealCell(p.r,p.c);
+  });
+
+  boardEl.addEventListener('contextmenu', function(e){
+    e.preventDefault();
+    var el=e.target;
+    if(!el.classList.contains('cell')) return;
+    var p=cellIndex(el);
+    if(!playing) return;
+    toggleFlag(p.r,p.c);
+  });
+
+  flagBtn.addEventListener('click', function(){
+    flagMode=!flagMode;
+    flagBtn.classList.toggle('on', flagMode);
+    flagBtn.textContent=flagMode ? '🚩 插旗中（点击格子插旗）' : '🚩 插旗模式';
+  });
+
+  var levelBtns=document.querySelectorAll('#levels button');
+  for(var i=0;i<levelBtns.length;i++){
+    (function(btn){
+      btn.addEventListener('click', function(){
+        level=btn.getAttribute('data-level');
+        newGame();
+      });
+    })(levelBtns[i]);
+  }
+
+  statusEl.addEventListener('click', newGame);
+  ovBtn.addEventListener('click', newGame);
+
+  newGame();
+})();
+</script>
+</body>
+</html>
